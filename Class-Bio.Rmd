@@ -1,0 +1,461 @@
+
+---
+title: "CLASS-BIO Summary"
+author: "Andrew McDevitt"
+date: "May 17, 2017"
+output: html_document
+fig_caption: yes
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+## Load Data
+
+Here is an example of the data that could be loaded in for each course.
+
+```{r, include=FALSE}
+library(ggplot2)
+library(ggthemes)
+library(gridExtra)
+library(Rmisc)
+setwd('D:/Dropbox/LA Research')
+example <- read.csv('CLASSBioExample.csv') #Load example dataset
+```
+
+```{r example, echo=FALSE}
+head(example[1:15])
+```
+
+```{r, include=FALSE}
+overall.ques <- c(5:31,33:36) #select columns that contain questions (excluding Q28)
+example[, overall.ques][example[, overall.ques] == 0] <- NA #replace all 0's with NA
+example$PrePost <- factor(example$PrePost, levels = c('Pre', 'Post'))
+
+#load questions
+setwd('D:/Dropbox/LA Research')
+questions <- read.csv('CLASSBioQuestions.csv') #Load question details
+expert.consensus <- questions[c(4,1)]
+categories <- questions[c(3,1)]
+agree <- 4 + unique(as.numeric(expert.consensus$Number[which(expert.consensus$Consensus == 'Agree')])) #Identifies all questions where the expert response is agree/strongly agree
+disagree <- 4 + unique(as.numeric(expert.consensus$Number[which(expert.consensus$Consensus == 'Disagree')])) #Identifies all questions where the expert response is disagree/strongly disagree
+```
+
+##Transform data 
+One thing that the CLASS-Bio excel spreadsheet did was convert the 5-item likert scale to a 3-item likert scale.
+
+"To score student responses, each response was collapsed from a five-point Likert scale to a three-point scale: "neutral," "agree" ("strongly agree" or "agree"), or "disagree" ("strongly disagree" or "disagree"). Combining the "strongly agree"/"agree" and "strongly disagree"/"disagree" responses is consistent with an ordinal characterization of a Likert scale that assumes differencesbetween responses on the scale are not necessarily equal. Interviews from both the initial CLASS-Phys validation and our own interviews support this interpretation: student reasons for answering "agree" versus "strongly agree" or "disagree" versus "strongly disagree" were not consistent from student to student."
+
+```{r, include=FALSE}
+agreement <- example
+agreement[overall.ques][agreement[overall.ques] == 1] <- -1 #strongly disagree to disagree
+agreement[overall.ques][agreement[overall.ques] == 2] <- -1 #disagree to disagree
+agreement[overall.ques][agreement[overall.ques] == 3] <- 0  #neutral to neutral
+agreement[overall.ques][agreement[overall.ques] == 4] <- 1  #agree to agree
+agreement[overall.ques][agreement[overall.ques] == 5] <- 1  #strongly agree to agree
+```
+
+```{r agreement, echo=FALSE}
+head(agreement[1:15])
+```
+
+The next step is to compare how student responses compared to expert responses.
+
+"Each student's response is then designated as favorable (agreeing with the expert consensus-not necessarily agreeing with statement), unfavorable (disagreeing with expert consensus), or neutral (neither agreeing or disagreeing with the expert consensus). For example, for Statements 1 and 2 (Supplemental Material A), the expert response is "agree" and only students scoring "agree"/"strongly agree" are scored as having a favorable response. Meanwhile, for Statements 3 and 4 (Supplemental Material A), the expert consensus is "disagree" and, thus, only students answering "disagree"/"strongly disagree" are scored as having a favorable response."
+
+```{r, include=FALSE}
+favorable <-example
+favorable[agree][favorable[agree] == 1] <- "unfavorable"         #strongly disagree to unfavorable
+favorable[agree][favorable[agree] == 2] <- "unfavorable"         #disagree to unfaorable
+favorable[agree][favorable[agree] == 3] <- "netural"             #neutral to neutral
+favorable[agree][favorable[agree] == 4] <- "favorable"           #agree to favorable
+favorable[agree][favorable[agree] == 5] <- "favorable"           #strongly agree to favorable
+favorable[disagree][favorable[disagree] == 5] <- "unfavorable"   #strongly agree to unfavorable
+favorable[disagree][favorable[disagree] == 4] <- "unfavorable"   #agree to unfavorable
+favorable[disagree][favorable[disagree] == 3] <- "netural"       #neutral to neutral
+favorable[disagree][favorable[disagree] == 2] <- "favorable"     #disagree to favorable
+favorable[disagree][favorable[disagree] == 1] <- "favorable"     #strongly disagree to favorable
+```
+
+```{r favorable, echo=FALSE}
+head(favorable[c(1,5:9)])
+```
+
+```{r, include=FALSE}
+######################################
+#Add new columns to favorable dataframe
+######################################
+#add columns for overall favorable/unfavorable percentages
+favorable$Total.fav <- rowSums(favorable[overall.ques]=="favorable", na.rm = T)/rowSums(!is.na(favorable[overall.ques]))*100
+favorable$Total.unfav <- rowSums(favorable[overall.ques]=="unfavorable", na.rm = T)/rowSums(!is.na(favorable[overall.ques]))*100
+Total.fav_within <- summarySEwithin(data=favorable, measurevar="Total.fav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+Total.fav_between <- summarySE(data=favorable, measurevar="Total.fav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+Total.unfav_within <- summarySEwithin(data=favorable, measurevar="Total.unfav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+Total.unfav_between <- summarySE(data=favorable, measurevar="Total.unfav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+
+#add columns for all categories favorable/unfavorable percentages
+all.categories <- 4 + unique(as.numeric(categories$Number[which(categories$Category != "Questions that don't fit but we'd like to keep.")])) #don't forget to take into account the leading columns
+favorable$Categ.fav <- rowSums(favorable[all.categories]=="favorable", na.rm = T)/rowSums(!is.na(favorable[all.categories]))*100
+favorable$Categ.unfav <- rowSums(favorable[all.categories]=="unfavorable", na.rm = T)/rowSums(!is.na(favorable[all.categories]))*100
+Categ.fav_within <- summarySEwithin(data=favorable, measurevar="Categ.fav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+Categ.fav_between <- summarySE(data=favorable, measurevar="Categ.fav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+Categ.unfav_within <- summarySEwithin(data=favorable, measurevar="Categ.unfav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+Categ.unfav_between <- summarySE(data=favorable, measurevar="Categ.unfav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+
+#add columns for Conceptual Connections/ Memorization favorable/unfavorable percentages
+CCM <- 4 + as.numeric(categories$Number[which(categories$Category == 'Conceptual Connections/ Memorization')])
+favorable$CCM.fav <- rowSums(favorable[CCM]=="favorable", na.rm = T)/rowSums(!is.na(favorable[CCM]))*100
+favorable$CCM.unfav <- rowSums(favorable[CCM]=="unfavorable", na.rm = T)/rowSums(!is.na(favorable[CCM]))*100
+CCM.fav_within <- summarySEwithin(data=favorable, measurevar="CCM.fav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+CCM.fav_between <- summarySE(data=favorable, measurevar="CCM.fav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+CCM.unfav_within <- summarySEwithin(data=favorable, measurevar="CCM.unfav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+CCM.unfav_between <- summarySE(data=favorable, measurevar="CCM.unfav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+
+#add columns for Enjoyment favorable/unfavorable percentages
+Enjoy <- 4 + as.numeric(categories$Number[which(categories$Category == 'Enjoyment')])
+favorable$Enjoy.fav <- rowSums(favorable[Enjoy]=="favorable", na.rm = T)/rowSums(!is.na(favorable[Enjoy]))*100
+favorable$Enjoy.unfav <- rowSums(favorable[Enjoy]=="unfavorable", na.rm = T)/rowSums(!is.na(favorable[Enjoy]))*100
+Enjoy.fav_within <- summarySEwithin(data=favorable, measurevar="Enjoy.fav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+Enjoy.fav_between <- summarySE(data=favorable, measurevar="Enjoy.fav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+Enjoy.unfav_within <- summarySEwithin(data=favorable, measurevar="Enjoy.unfav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+Enjoy.unfav_between <- summarySE(data=favorable, measurevar="Enjoy.unfav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+
+#add columns for Problem-solving Difficulty favorable/unfavorable percentages
+PS.D <- 4 + as.numeric(categories$Number[which(categories$Category == 'Problem-solving Difficulty')])
+favorable$PS.D.fav <- rowSums(favorable[PS.D]=="favorable", na.rm = T)/rowSums(!is.na(favorable[PS.D]))*100
+favorable$PS.D.unfav <- rowSums(favorable[PS.D]=="unfavorable", na.rm = T)/rowSums(!is.na(favorable[PS.D]))*100
+PS.D.fav_within <- summarySEwithin(data=favorable, measurevar="PS.D.fav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+PS.D.fav_between <- summarySE(data=favorable, measurevar="PS.D.fav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+PS.D.unfav_within <- summarySEwithin(data=favorable, measurevar="PS.D.unfav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+PS.D.unfav_between <- summarySE(data=favorable, measurevar="PS.D.unfav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+
+#add columns for Problem-solving Effort favorable/unfavorable percentages
+PS.E <- 4 + as.numeric(categories$Number[which(categories$Category == 'Problem-solving Effort')])
+favorable$PS.E.fav <- rowSums(favorable[PS.E]=="favorable", na.rm = T)/rowSums(!is.na(favorable[PS.E]))*100
+favorable$PS.E.unfav <- rowSums(favorable[PS.E]=="unfavorable", na.rm = T)/rowSums(!is.na(favorable[PS.E]))*100
+PS.E.fav_within <- summarySEwithin(data=favorable, measurevar="PS.E.fav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+PS.E.fav_between <- summarySE(data=favorable, measurevar="PS.E.fav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+PS.E.unfav_within <- summarySEwithin(data=favorable, measurevar="PS.E.unfav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+PS.E.unfav_between <- summarySE(data=favorable, measurevar="PS.E.unfav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+
+#add columns for Problem-solving Strategies favorable/unfavorable percentages
+PS.S <- 4 + as.numeric(categories$Number[which(categories$Category == 'Problem-solving Strategies')])
+favorable$PS.S.fav <- rowSums(favorable[PS.S]=="favorable", na.rm = T)/rowSums(!is.na(favorable[PS.S]))*100
+favorable$PS.S.unfav <- rowSums(favorable[PS.S]=="unfavorable", na.rm = T)/rowSums(!is.na(favorable[PS.S]))*100
+PS.S.fav_within <- summarySEwithin(data=favorable, measurevar="PS.S.fav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+PS.S.fav_between <- summarySE(data=favorable, measurevar="PS.S.fav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+PS.S.unfav_within <- summarySEwithin(data=favorable, measurevar="PS.S.unfav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+PS.S.unfav_between <- summarySE(data=favorable, measurevar="PS.S.unfav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+
+#add columns for Real World Connection favorable/unfavorable percentages
+RWC <- 4 + as.numeric(categories$Number[which(categories$Category == 'Real World Connection')])
+favorable$RWC.fav <- rowSums(favorable[RWC]=="favorable", na.rm = T)/rowSums(!is.na(favorable[RWC]))*100
+favorable$RWC.unfav <- rowSums(favorable[RWC]=="unfavorable", na.rm = T)/rowSums(!is.na(favorable[RWC]))*100
+RWC.fav_within <- summarySEwithin(data=favorable, measurevar="RWC.fav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+RWC.fav_between <- summarySE(data=favorable, measurevar="RWC.fav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+RWC.unfav_within <- summarySEwithin(data=favorable, measurevar="RWC.unfav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+RWC.unfav_between <- summarySE(data=favorable, measurevar="RWC.unfav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+
+#add columns for Reasoning favorable/unfavorable percentages
+Reason <- 4 + as.numeric(categories$Number[which(categories$Category == 'Reasoning')])
+favorable$Reason.fav <- rowSums(favorable[Reason]=="favorable", na.rm = T)/rowSums(!is.na(favorable[Reason]))*100
+favorable$Reason.unfav <- rowSums(favorable[Reason]=="unfavorable", na.rm = T)/rowSums(!is.na(favorable[Reason]))*100
+Reason.fav_within <- summarySEwithin(data=favorable, measurevar="Reason.fav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+Reason.fav_between <- summarySE(data=favorable, measurevar="Reason.fav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+Reason.unfav_within <- summarySEwithin(data=favorable, measurevar="Reason.unfav", withinvars="PrePost",idvar="ID", na.rm=FALSE, conf.interval=.95)
+Reason.unfav_between <- summarySE(data=favorable, measurevar="Reason.unfav", groupvars="PrePost", na.rm=FALSE, conf.interval=.95)
+```
+
+
+##Create graphs
+From this data, we can then create graphs based upon the percentage of favorable or unfavorable responses.
+```{r, include=FALSE}
+# Show the between-S CI's in red, and the within-S CI's in black
+Tot.F <- ggplot(NULL, aes(x=PrePost, y=Total.fav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = Total.fav_between, group=1) +
+  geom_errorbar(data = Total.fav_between,  group=1, color='red', width=.1, aes(ymin=Total.fav-ci, ymax=Total.fav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=Total.fav-ci, ymax=Total.fav+ci), data=Total.fav_within) +
+  labs(x="CLASS-Bio", y="Percent Favorable Scores\n (Novice to Expert)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+Tot.U <- ggplot(NULL, aes(x=PrePost, y=Total.unfav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = Total.unfav_between, group=1) +
+  geom_errorbar(data = Total.unfav_between,  group=1, color='red', width=.1, aes(ymin=Total.unfav-ci, ymax=Total.unfav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=Total.unfav-ci, ymax=Total.unfav+ci), data=Total.unfav_within) +
+  labs(x="CLASS-Bio", y="Percent Unfavorable Scores\n (Expert to Novice)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5, fig.cap=" Figure 1. All questions relative to expert responses. Mean percentages are displayed in black and individual students are shown in gray. The regular between-subject 95% confidence intervals are in red, and the within-subject 95% confidence intervals are in black."}
+grid.arrange(Tot.F, Tot.U,
+             ncol = 2, nrow = 1
+             )
+```
+
+```{r, include=FALSE}
+Cat.F <- ggplot(NULL, aes(x=PrePost, y=Categ.fav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = Categ.fav_between, group=1) +
+  geom_errorbar(data = Categ.fav_between,  group=1, color='red', width=.1, aes(ymin=Categ.fav-ci, ymax=Categ.fav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=Categ.fav-ci, ymax=Categ.fav+ci), data=Categ.fav_within) +
+  labs(x="CLASS-Bio", y="Percent Favorable Scores\n (Novice to Expert)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+Cat.U <- ggplot(NULL, aes(x=PrePost, y=Categ.unfav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = Categ.unfav_between, group=1) +
+  geom_errorbar(data = Categ.unfav_between,  group=1, color='red', width=.1, aes(ymin=Categ.unfav-ci, ymax=Categ.unfav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=Categ.unfav-ci, ymax=Categ.unfav+ci), data=Categ.unfav_within) +
+  labs(x="CLASS-Bio", y="Percent Unfavorable Scores\n (Expert to Novice)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5, fig.cap=" Figure 2. Categorized questions relative to expert responses. Mean percentages are displayed in black and individual students are shown in gray. The regular between-subject 95% confidence intervals are in red, and the within-subject 95% confidence intervals are in black."}
+grid.arrange(Cat.F, Cat.U,
+             ncol = 2, nrow = 1
+)
+```
+
+
+
+```{r, include=FALSE}
+Enjoy.F <- ggplot(NULL, aes(x=PrePost, y=Enjoy.fav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = Enjoy.fav_between, group=1) +
+  geom_errorbar(data = Enjoy.fav_between,  group=1, color='red', width=.1, aes(ymin=Enjoy.fav-ci, ymax=Enjoy.fav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=Enjoy.fav-ci, ymax=Enjoy.fav+ci), data=Enjoy.fav_within) +
+  labs(x="CLASS-Bio", y="Percent Favorable Scores\n (Novice to Expert)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+Enjoy.U <- ggplot(NULL, aes(x=PrePost, y=Enjoy.unfav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = Enjoy.unfav_between, group=1) +
+  geom_errorbar(data = Enjoy.unfav_between,  group=1, color='red', width=.1, aes(ymin=Enjoy.unfav-ci, ymax=Enjoy.unfav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=Enjoy.unfav-ci, ymax=Enjoy.unfav+ci), data=Enjoy.unfav_within) +
+  labs(x="CLASS-Bio", y="Percent Unfavorable Scores\n (Expert to Novice)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5, fig.cap=" Figure 3. Enjoyment questions relative to expert responses. Mean percentages are displayed in black and individual students are shown in gray. The regular between-subject 95% confidence intervals are in red, and the within-subject 95% confidence intervals are in black."}
+grid.arrange(Enjoy.F, Enjoy.U,
+             ncol = 2, nrow = 1
+)
+```
+Enjoyment questions:
+
+1. My curiosity about the living world led me to study biology.
+
+2. I think about the biology I experience in everyday life.
+
+9. I want to study biology because I want to make a contribution to society.
+
+12. I enjoy figuring out answers to biology questions.
+
+18. If I had plenty of time, I would take a biology class outside of my major requirements just for fun.
+
+27. I enjoy explaining biological ideas that I learn about to my friends.
+
+
+```{r, include=FALSE}
+
+PS.D.F <- ggplot(NULL, aes(x=PrePost, y=PS.D.fav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = PS.D.fav_between, group=1) +
+  geom_errorbar(data = PS.D.fav_between,  group=1, color='red', width=.1, aes(ymin=PS.D.fav-ci, ymax=PS.D.fav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=PS.D.fav-ci, ymax=PS.D.fav+ci), data=PS.D.fav_within) +
+  labs(x="CLASS-Bio", y="Percent Favorable Scores\n (Novice to Expert)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+PS.D.U <- ggplot(NULL, aes(x=PrePost, y=PS.D.unfav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = PS.D.unfav_between, group=1) +
+  geom_errorbar(data = PS.D.unfav_between,  group=1, color='red', width=.1, aes(ymin=PS.D.unfav-ci, ymax=PS.D.unfav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=PS.D.unfav-ci, ymax=PS.D.unfav+ci), data=PS.D.unfav_within) +
+  labs(x="CLASS-Bio", y="Percent Unfavorable Scores\n (Expert to Novice)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5, fig.cap=" Figure 4. Problem-solving (Difficulty) questions relative to expert responses. Mean percentages are displayed in black and individual students are shown in gray. The regular between-subject 95% confidence intervals are in red, and the within-subject 95% confidence intervals are in black."}
+grid.arrange(PS.D.F, PS.D.U,
+             ncol = 2, nrow = 1
+)
+```
+Problem-solving (Difficulty) questions:
+
+3. After I study a topic in biology and feel that I understand it, I have difficulty applying that information to answer questions on the same topic.
+
+5. When I am answering a biology question, I find it difficult to put what I know into my own words.
+
+6. I do not expect the rules of biological principles to help my understanding of the ideas.
+
+10. If I don't remember a particular approach needed for a question on an exam, there's nothing much I can do (legally!) to come up with it.
+
+11. If I want to apply a method or idea used for understanding one biological problem to another problem, the problems must involve very similar situations.
+
+21. If I get stuck on a biology question, there is no chance I'll figure it out on my own.
+
+30. I do not spend more than a few minutes stuck on a biology question before giving up or seeking help from someone else.
+
+```{r, include=FALSE}
+PS.E.F <- ggplot(NULL, aes(x=PrePost, y=PS.E.fav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = PS.E.fav_between, group=1) +
+  geom_errorbar(data = PS.E.fav_between,  group=1, color='red', width=.1, aes(ymin=PS.E.fav-ci, ymax=PS.E.fav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=PS.E.fav-ci, ymax=PS.E.fav+ci), data=PS.E.fav_within) +
+  labs(x="CLASS-Bio", y="Percent Favorable Scores\n (Novice to Expert)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+PS.E.U <- ggplot(NULL, aes(x=PrePost, y=PS.E.unfav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = PS.E.unfav_between, group=1) +
+  geom_errorbar(data = PS.E.unfav_between,  group=1, color='red', width=.1, aes(ymin=PS.E.unfav-ci, ymax=PS.E.unfav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=PS.E.unfav-ci, ymax=PS.E.unfav+ci), data=PS.E.unfav_within) +
+  labs(x="CLASS-Bio", y="Percent Unfavorable Scores\n (Expert to Novice)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5, fig.cap=" Figure 5. Problem-solving (Effort) questions relative to expert responses. Mean percentages are displayed in black and individual students are shown in gray. The regular between-subject 95% confidence intervals are in red, and the within-subject 95% confidence intervals are in black."}
+grid.arrange(PS.E.F, PS.E.U,
+             ncol = 2, nrow = 1
+)
+```
+Problem-solving (Effort) questions:
+
+8. If I get stuck on answering a biology question on my first try, I usually try to figure out a different way that works.
+
+12. I enjoy figuring out answers to biology questions.
+
+20. There are times I think about or solve a biology question in more than one way to help my understanding.
+
+22. When studying biology, I relate the important information to what I already know rather than just memorizing it the way it is presented.
+
+24. When I am not pressed for time, I will continue to work on a biology problem until I understand why something works the way it does.
+
+27. I enjoy explaining biological ideas that I learn about to my friends.
+
+30. I do not spend more than a few minutes stuck on a biology question before giving up or seeking help from someone else.
+
+
+```{r, include=FALSE}
+PS.S.F <- ggplot(NULL, aes(x=PrePost, y=PS.S.fav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = PS.S.fav_between, group=1) +
+  geom_errorbar(data = PS.S.fav_between,  group=1, color='red', width=.1, aes(ymin=PS.S.fav-ci, ymax=PS.S.fav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=PS.S.fav-ci, ymax=PS.S.fav+ci), data=PS.S.fav_within) +
+  labs(x="CLASS-Bio", y="Percent Favorable Scores\n (Novice to Expert)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+PS.S.U <- ggplot(NULL, aes(x=PrePost, y=PS.S.unfav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = PS.S.unfav_between, group=1) +
+  geom_errorbar(data = PS.S.unfav_between,  group=1, color='red', width=.1, aes(ymin=PS.S.unfav-ci, ymax=PS.S.unfav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=PS.S.unfav-ci, ymax=PS.S.unfav+ci), data=PS.S.unfav_within) +
+  labs(x="CLASS-Bio", y="Percent Unfavorable Scores\n (Expert to Novice)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5, fig.cap=" Figure 6. Problem-solving (Strategies) questions relative to expert responses. Mean percentages are displayed in black and individual students are shown in gray. The regular between-subject 95% confidence intervals are in red, and the within-subject 95% confidence intervals are in black."}
+grid.arrange(PS.S.F, PS.S.U,
+             ncol = 2, nrow = 1
+)
+```
+Problem-solving (Strategies) questions:
+
+7. To understand biology, I sometimes think about my personal experiences and relate them to the topic being analyzed.
+
+8. If I get stuck on answering a biology question on my first try, I usually try to figure out a different way that works.
+
+20. There are times I think about or solve a biology question in more than one way to help my understanding.
+
+22. When studying biology, I relate the important information to what I already know rather than just memorizing it the way it is presented.
+```{r, include=FALSE}
+RWC.F <- ggplot(NULL, aes(x=PrePost, y=RWC.fav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = RWC.fav_between, group=1) +
+  geom_errorbar(data = RWC.fav_between,  group=1, color='red', width=.1, aes(ymin=RWC.fav-ci, ymax=RWC.fav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=RWC.fav-ci, ymax=RWC.fav+ci), data=RWC.fav_within) +
+  labs(x="CLASS-Bio", y="Percent Favorable Scores\n (Novice to Expert)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+RWC.U <- ggplot(NULL, aes(x=PrePost, y=RWC.unfav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = RWC.unfav_between, group=1) +
+  geom_errorbar(data = RWC.unfav_between,  group=1, color='red', width=.1, aes(ymin=RWC.unfav-ci, ymax=RWC.unfav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=RWC.unfav-ci, ymax=RWC.unfav+ci), data=RWC.unfav_within) +
+  labs(x="CLASS-Bio", y="Percent Unfavorable Scores\n (Expert to Novice)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5, fig.cap=" Figure 7. Real World Connections questions relative to expert responses. Mean percentages are displayed in black and individual students are shown in gray. The regular between-subject 95% confidence intervals are in red, and the within-subject 95% confidence intervals are in black."}
+grid.arrange(RWC.F, RWC.U,
+             ncol = 2, nrow = 1
+)
+```
+Real World Connections questions:
+
+2. I think about the biology I experience in everyday life.
+
+12. I enjoy figuring out answers to biology questions.
+
+14. Learning biology changes my ideas about how the natural world works.
+
+16. Reasoning skills used to understand biology can be helpful to my everyday life.
+
+17. It is a valuable use of my time to study the fundamental experiments behind biological ideas.
+
+19. The subject of biology has little relation to what I experience in the real world.
+
+25. Learning biology that is not directly relevant to or applicable to human health is not worth my time.
+
+```{r, include=FALSE}
+Reason.F <- ggplot(NULL, aes(x=PrePost, y=Reason.fav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = Reason.fav_between, group=1) +
+  geom_errorbar(data = Reason.fav_between,  group=1, color='red', width=.1, aes(ymin=Reason.fav-ci, ymax=Reason.fav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=Reason.fav-ci, ymax=Reason.fav+ci), data=Reason.fav_within) +
+  labs(x="CLASS-Bio", y="Percent Favorable Scores\n (Novice to Expert)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+Reason.U <- ggplot(NULL, aes(x=PrePost, y=Reason.unfav, group= ID))+
+  geom_line(data = favorable, color='gray') +  geom_point(data = favorable, color='gray')+
+  geom_line(data = Reason.unfav_between, group=1) +
+  geom_errorbar(data = Reason.unfav_between,  group=1, color='red', width=.1, aes(ymin=Reason.unfav-ci, ymax=Reason.unfav+ci)) +
+  geom_errorbar( group=1, color=1, width=.1, aes(ymin=Reason.unfav-ci, ymax=Reason.unfav+ci), data=Reason.unfav_within) +
+  labs(x="CLASS-Bio", y="Percent Unfavorable Scores\n (Expert to Novice)") +
+  scale_y_continuous(limits = c(0,100))+
+  theme_par() +  theme(legend.position = 'none', plot.margin=unit(c(0.5,0.5,0.5,0.5), "cm"))
+```
+
+```{r, echo=FALSE, fig.width=10, fig.height=5, fig.cap=" Figure 8. Reasoning questions relative to expert responses. Mean percentages are displayed in black and individual students are shown in gray. The regular between-subject 95% confidence intervals are in red, and the within-subject 95% confidence intervals are in black."}
+grid.arrange(Reason.F, Reason.U,
+             ncol = 2, nrow = 1
+)
+```
+Reasoning questions:
+
+8. If I get stuck on answering a biology question on my first try, I usually try to figure out a different way that works.
+
+14. Learning biology changes my ideas about how the natural world works.
+
+16. Reasoning skills used to understand biology can be helpful to my everyday life.
+
+17. It is a valuable use of my time to study the fundamental experiments behind biological ideas.
+
+24. When I am not pressed for time, I will continue to work on a biology problem until I understand why something works the way it does.
